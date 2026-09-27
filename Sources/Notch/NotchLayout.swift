@@ -213,17 +213,34 @@ enum NotchLayout {
 
     // Weekly usage history
     static let historyChartTop = Design.px(15)
-    static let historyChartHeight = Design.px(115)
-    /// Separator, chart, the line naming the cycle's two ends, and the detail line.
+    /// The inset that lines the scale up with the plot costs a line; given back.
+    static let historyChartHeight = Design.px(115) + cardBodyLineHeight
+    /// Separator, title, chart, the dates under it, the legend and the detail line.
     static var historyBlockHeight: CGFloat {
-        codexUsageTop + hairline + historyChartTop + historyChartHeight
-            + 2 * (codexUsageRowGap + cardBodyLineHeight)
+        codexUsageTop + hairline + blockSpacing + cardBodyLineHeight
+            + historyChartTop + historyChartHeight
+            + 3 * (codexUsageRowGap + cardBodyLineHeight)
+    }
+    /// Room left of a chart for its scale, sized to the history chart's widest
+    /// mark; a wider one shrinks to fit.
+    static let axisGutter: CGFloat = ceil(("100%" as NSString).size(withAttributes: [.font: cardBodyFont]).width)
+        + Design.px(8)
+
+    /// Whether `label`, centred at `fraction` of `width`, clears the labels at
+    /// both ends of the row, measured in the card's body font.
+    static func fitsBetween(_ label: String, at fraction: Double, width: CGFloat,
+                            leading: String, trailing: String) -> Bool {
+        func measure(_ text: String) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: cardBodyFont]).width
+        }
+        let centre = width * CGFloat(fraction), half = measure(label) / 2, gap = Design.px(12)
+        return centre - half >= measure(leading) + gap && centre + half <= width - measure(trailing) - gap
     }
 
     /// Separator, title, bars, weekday labels, the legend and the detail line.
     static var codexLimitBlockHeight: CGFloat {
         codexUsageTop + hairline + blockSpacing + cardBodyLineHeight
-            + codexChartTop + codexChartHeight
+            + codexChartTop + codexChartHeight + cardBodyLineHeight
             + 3 * (codexUsageRowGap + cardBodyLineHeight)
     }
 

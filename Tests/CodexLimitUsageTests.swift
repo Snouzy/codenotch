@@ -53,8 +53,8 @@ final class CodexLimitUsageTests: XCTestCase {
         let usage = try CodexLimitUsage.parse(body)
         XCTAssertEqual(usage.leaders, ["a", "b"])
         XCTAssertEqual(usage.stack(for: usage.days[1]), [1.0, 0.0, 0.5])
-        XCTAssertEqual(usage.legend.map(\.model), ["a", "b", nil])
-        XCTAssertEqual(usage.legend.map(\.share), [0.6, 0.2, 0.2])
+        XCTAssertEqual(usage.legend(hovering: nil).map(\.model), ["a", "b", nil])
+        XCTAssertEqual(usage.legend(hovering: nil).map(\.amount), ["3.0", "1.0", "1.0"])
         XCTAssertEqual(usage.scale, 3.5, accuracy: 0.000001)
     }
 
@@ -290,18 +290,20 @@ final class CodexDailyLimitSwitchTests: XCTestCase {
 
 final class CodexLimitUsageDetailTests: XCTestCase {
     private let en = Locale(identifier: "en_US")
-    private typealias Part = CodexLimitUsage.Detail.Part
+    private typealias Entry = CodexLimitUsage.LegendEntry
 
-    func testWithoutHoverItSumsTheDaysAndNamesTheLastOne() throws {
+    func testWithoutHoverTheLinesGiveTheDaysInPercentOfTheWeeklyLimit() throws {
         let usage = try CodexLimitUsage.parse(CodexLimitUsageTests.fixture)
-        XCTAssertEqual(usage.detail(hovering: nil, locale: en), .init(text: "2 days 3.3% · Sat 2.0%", parts: []))
+        XCTAssertEqual(usage.detail(hovering: nil, locale: en), "Last 2 days: 3.3% of your weekly limit")
+        XCTAssertEqual(usage.legend(hovering: nil),
+                       [Entry(model: "gpt-6-astra", amount: "2.4"), Entry(model: "gpt-5.6-sol", amount: "0.9")])
     }
 
-    func testAHoveredDayIsSplitInTheChartsOwnSeries() throws {
+    func testAHoveredDayGivesItsOwnAmounts() throws {
         let usage = try CodexLimitUsage.parse(CodexLimitUsageTests.fixture)
-        XCTAssertEqual(usage.detail(hovering: 1, locale: en),
-                       .init(text: "Sat 26 · 2.0% of weekly",
-                             parts: [Part(series: 0, amount: "1.3"), Part(series: 1, amount: "0.7")]))
+        XCTAssertEqual(usage.detail(hovering: 1, locale: en), "Sat 26: 2.0% of your weekly limit")
+        XCTAssertEqual(usage.legend(hovering: 1),
+                       [Entry(model: "gpt-6-astra", amount: "1.3"), Entry(model: "gpt-5.6-sol", amount: "0.7")])
     }
 
     func testOtherTakesTheRestAndAnEmptyDaySaysSo() throws {
@@ -310,22 +312,24 @@ final class CodexLimitUsageDetailTests: XCTestCase {
           {"date":"2026-09-01","models":[]},
           {"date":"2026-09-02","models":[{"model":"a","credits":2.0},{"model":"b","credits":1.0},{"model":"c","credits":0.5}]}]}
         """.utf8))
-        XCTAssertEqual(usage.detail(hovering: 0, locale: en), .init(text: "Tue 1 · no usage", parts: []))
-        XCTAssertEqual(usage.detail(hovering: 1, locale: en),
-                       .init(text: "Wed 2 · 3.5% of weekly",
-                             parts: [Part(series: 0, amount: "2.0"), Part(series: 1, amount: "1.0"),
-                                     Part(series: 2, amount: "0.5")]))
+        XCTAssertEqual(usage.detail(hovering: 0, locale: en), "Tue 1: no use")
+        XCTAssertEqual(usage.legend(hovering: 0), [])
+        XCTAssertEqual(usage.legend(hovering: 1),
+                       [Entry(model: "a", amount: "2.0"), Entry(model: "b", amount: "1.0"), Entry(model: nil, amount: "0.5")])
         XCTAssertEqual(usage.detail(hovering: 7, locale: en), usage.detail(hovering: nil, locale: en))
     }
 
-    func testTheLongestHoverLineFitsTheCard() throws {
+    func testTheLongestLinesFitTheCard() throws {
         let usage = try CodexLimitUsage.parse(Data("""
         {"units":"percent","data":[{"date":"2026-09-30","models":[
           {"model":"gpt-5.1-codex-max","credits":10.3},{"model":"gpt-6-astra","credits":1.7},
           {"model":"gpt-image-2","credits":0.5}]}]}
         """.utf8))
-        let line = usage.detail(hovering: 0, locale: en).line
-        let width = (line as NSString).size(withAttributes: [.font: NotchLayout.cardBodyFont]).width
-        XCTAssertLessThanOrEqual(width, NotchLayout.cardTextWidth / 0.8, line)
+        let legend = usage.legend(hovering: nil).map { "● \($0.model ?? "Other") \($0.amount)%" }.joined(separator: "   ")
+        let detail = usage.detail(hovering: 0, locale: en)
+        for (line, scale) in [(legend, 0.6), (detail, 0.8)] {
+            let width = (line as NSString).size(withAttributes: [.font: NotchLayout.cardBodyFont]).width
+            XCTAssertLessThanOrEqual(width, NotchLayout.cardTextWidth / scale, line)
+        }
     }
 }

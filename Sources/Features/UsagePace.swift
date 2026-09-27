@@ -77,6 +77,29 @@ extension LimitWindow {
     }
 }
 
+extension LimitWindow {
+    /// The used share at `date` if the average rate so far holds. Nil in the
+    /// first 5% of the window, for the same reason as `projection(now:)`.
+    func usedAtThisRate(_ date: Date, now: Date) -> Double? {
+        guard let usedFraction, usedFraction.isFinite,
+              let duration, duration.isFinite, duration > 0,
+              let resetsAt, resetsAt > now else { return nil }
+        let elapsed = duration - resetsAt.timeIntervalSince(now)
+        guard elapsed >= 0.05 * duration else { return nil }
+        return usedFraction / elapsed * (elapsed + date.timeIntervalSince(now))
+    }
+
+    /// Where the chart's "at this rate" line ends: at the limit, or at the
+    /// reset when that comes first.
+    func rateLine(now: Date) -> (end: Date, used: Double)? {
+        guard let resetsAt, let usedFraction, usedFraction < 1,
+              let atReset = usedAtThisRate(resetsAt, now: now) else { return nil }
+        guard atReset > 1 else { return (resetsAt, atReset) }
+        let rate = (atReset - usedFraction) / resetsAt.timeIntervalSince(now)
+        return (now.addingTimeInterval((1 - usedFraction) / rate), 1)
+    }
+}
+
 extension ProviderSnapshot {
     /// Rows that draw a projection line under their summary. The card and the
     /// hover region budget one line for each, or the last row clips.

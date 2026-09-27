@@ -20,10 +20,10 @@ struct CodexLimitUsage: Codable, Equatable, Sendable {
     struct LegendEntry: Equatable {
         /// Nil for everything outside the leaders.
         let model: String?
-        let share: Double
+        /// Percent of the weekly limit, one decimal.
+        let amount: String
     }
 
-    /// The last seven days the endpoint returned, oldest first: all the chart draws.
     let days: [Day]
 
     enum ParseError: Error { case notPercent }
@@ -75,58 +75,43 @@ struct CodexLimitUsage: Codable, Equatable, Sendable {
         return values + [max(0, day.total - values.reduce(0, +))]
     }
 
-    var legend: [LegendEntry] {
-        let names: [String?] = leaders.map { Optional($0) } + [nil]
-        let stacks = days.map(stack(for:))
-        let totals = names.indices.map { index in stacks.reduce(0) { $0 + $1[index] } }
-        let sum = totals.reduce(0, +)
-        guard sum > 0 else { return [] }
-        return zip(names, totals).compactMap { name, total in
-            total > 0 ? LegendEntry(model: name, share: total / sum) : nil
-        }
-    }
-
     /// The tallest day, floored so a quiet week does not draw full-height bars.
     var scale: Double { max(1, days.map(\.total).max() ?? 0) }
 
-    /// The line under the legend. Its parts follow the bars' own series, the
-    /// week's two leaders then Other, so each amount wears its bar's colour
-    /// instead of a model name the card has no room for.
-    struct Detail: Equatable {
-        struct Part: Equatable {
-            /// 0 and 1 are the leaders, 2 is Other.
-            let series: Int
-            let amount: String
+    /// The legend in percent of the weekly limit, like the bars: the week per
+    /// series without a pointer, the hovered day with one. The week's two
+    /// leaders, then Other; empty entries left out.
+    func legend(hovering index: Int?) -> [LegendEntry] {
+        let names: [String?] = leaders.map { Optional($0) } + [nil]
+        let values: [Double]
+        if let index, days.indices.contains(index) {
+            values = stack(for: days[index])
+        } else {
+            let stacks = days.map(stack(for:))
+            values = names.indices.map { series in stacks.reduce(0) { $0 + $1[series] } }
         }
-
-        let text: String
-        let parts: [Part]
-
-        /// The line as the card lays it out, dots in place of colours.
-        var line: String { parts.isEmpty ? text : text + " ·" + parts.map { " ● \($0.amount)" }.joined() }
+        return zip(names, values).compactMap { name, value in
+            value > 0 ? LegendEntry(model: name, amount: Self.amount(value)) : nil
+        }
     }
 
-    /// The days' total and the last day without a pointer, the hovered day
-    /// split by series with one.
-    func detail(hovering index: Int?, locale: Locale = L10n.locale) -> Detail {
-        func amount(_ value: Double) -> String {
-            String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
-        }
+    /// The line under the legend: the days' total without a pointer, the
+    /// hovered day's with one.
+    func detail(hovering index: Int?, locale: Locale = L10n.locale) -> String {
         guard let index, days.indices.contains(index) else {
-            guard let last = days.last else { return Detail(text: "", parts: []) }
-            let total = amount(days.reduce(0) { $0 + $1.total })
-            let lastDay = Self.weekday(last.date, locale: locale)
-            return Detail(text: L10n.t("\(days.count) days \(total)% · \(lastDay) \(amount(last.total))%", locale: locale),
-                          parts: [])
+            let total = Self.amount(days.reduce(0) { $0 + $1.total })
+            return days.count == 1
+                ? L10n.t("Last day: \(total)% of your weekly limit", locale: locale)
+                : L10n.t("Last \(days.count) days: \(total)% of your weekly limit", locale: locale)
         }
         let day = days[index]
         let label = Self.day(day.date, locale: locale)
-        guard day.total > 0 else { return Detail(text: L10n.t("\(label) · no usage", locale: locale), parts: []) }
-        let parts = stack(for: day).enumerated().compactMap { series, value in
-            value > 0 ? Detail.Part(series: leaders.count < 2 && series == leaders.count ? 2 : series,
-                                    amount: amount(value)) : nil
-        }
-        return Detail(text: L10n.t("\(label) · \(amount(day.total))% of weekly", locale: locale), parts: parts)
+        guard day.total > 0 else { return L10n.t("\(label): no use", locale: locale) }
+        return L10n.t("\(label): \(Self.amount(day.total))% of your weekly limit", locale: locale)
+    }
+
+    static func amount(_ value: Double) -> String {
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
     }
 
     static func weekday(_ date: String, locale: Locale = L10n.locale) -> String {

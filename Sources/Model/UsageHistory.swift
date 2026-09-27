@@ -129,43 +129,85 @@ extension UsageHistory.Series {
 }
 
 extension UsageHistory {
-    /// The line under the chart: the latest reading and the pace without a
-    /// pointer, the reading under it with one. Readings print like the rest of
-    /// the card, `~` included; pace is time arithmetic and never carries one.
+    private static func time(_ moment: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
+        let formatter = ResetCopy.formatter(for: calendar)
+        formatter.locale = locale
+        // Past or future, a weekday alone only names a day within a week.
+        let days = abs(ResetCopy.daysApart(from: moment, to: now, calendar: calendar))
+        formatter.setLocalizedDateFormatFromTemplate(days == 0 ? "j:mm" : days < 7 ? "E j:mm" : "MMM d j:mm")
+        return formatter.string(from: moment)
+    }
+
+    /// The chart's title, and when the recording began if that was after the
+    /// cycle did, which is why a young chart looks empty.
+    static func heading(series: Series, window: LimitWindow, now: Date,
+                        calendar: Calendar = .current, locale: Locale = L10n.locale) -> (title: String, since: String?) {
+        let duration = window.duration ?? 0
+        let title: String
+        switch duration {
+        case ..<86400: title = window.label
+        case ...(8 * 86400): title = L10n.t("\(window.label) · this week", locale: locale)
+        default: title = L10n.t("\(window.label) · this month", locale: locale)
+        }
+        guard let first = series.samples.first, let resetsAt = window.resetsAt,
+              first.at.timeIntervalSince(resetsAt.addingTimeInterval(-duration)) > 30 * 60
+        else { return (title, nil) }
+        let since = time(first.at, now: now, calendar: calendar, locale: locale)
+        return (title, L10n.t("history since \(since)", locale: locale))
+    }
+
+    /// The line under the chart, in plain words: how the use compares with a
+    /// steady use of the limit without a pointer, the moment under it with one.
+    /// Readings print like the rest of the card, `~` included, and so does the
+    /// rate, which is an estimate; steady use is time arithmetic and carries none.
     static func detail(series: Series, window: LimitWindow, hovering date: Date?, now: Date,
                        fidelity: Fidelity = .official, staleSince: Date? = nil,
                        calendar: Calendar = .current, locale: Locale = L10n.locale) -> String {
         let duration = max(1, window.duration ?? 1)
         let start = (window.resetsAt ?? now).addingTimeInterval(-duration)
-        func pace(at moment: Date) -> Int {
+        func steady(at moment: Date) -> Int {
             Int((min(max(moment.timeIntervalSince(start) / duration, 0), 1) * 100).rounded())
         }
         func reading(_ fraction: Double) -> String { "\(fidelity.qualifier)\(Percent.text(for: fraction))" }
-        func time(_ moment: Date) -> String {
-            let formatter = ResetCopy.formatter(for: calendar)
-            formatter.locale = locale
-            // Past or future, a weekday alone only names a day within a week.
-            let days = abs(ResetCopy.daysApart(from: moment, to: now, calendar: calendar))
-            formatter.setLocalizedDateFormatFromTemplate(days == 0 ? "j:mm" : days < 7 ? "E j:mm" : "MMM d j:mm")
-            return formatter.string(from: moment)
-        }
+        func time(_ moment: Date) -> String { Self.time(moment, now: now, calendar: calendar, locale: locale) }
+        let reached = (window.usedFraction ?? 0) >= 1
 
         guard let date else {
             guard let latest = window.usedFraction ?? series.samples.last?.used else { return "" }
-            // A remembered reading is dated, as the card's header dates it.
             if let staleSince {
-                return L10n.t("\(time(staleSince)) · \(reading(latest))% · pace \(pace(at: staleSince))%",
+                return L10n.t("At \(time(staleSince)) · used \(reading(latest))% (steady use \(steady(at: staleSince))%)",
                               locale: locale)
             }
-            return L10n.t("Now \(reading(latest))% · pace \(pace(at: now))%", locale: locale)
+            let summary = L10n.t("Used \(reading(latest))% · steady use \(steady(at: now))%", locale: locale)
+            // Judged on where the rate line ends, so the verdict, the line and
+            // the card's own projection row never disagree.
+            let verdict: String
+            if reached {
+                verdict = L10n.t("limit reached", locale: locale)
+            } else if let resetsAt = window.resetsAt, let atReset = window.usedAtThisRate(resetsAt, now: now) {
+                verdict = atReset > 1.2 ? L10n.t("fast", locale: locale)
+                    : atReset > 1 ? L10n.t("a bit fast", locale: locale)
+                    : atReset >= 0.9 ? L10n.t("on track", locale: locale)
+                    : L10n.t("room to spare", locale: locale)
+            } else {
+                return summary
+            }
+            return L10n.t("\(summary) → \(verdict)", locale: locale)
         }
         if date > now {
-            return L10n.t("\(time(date)) · pace \(pace(at: date))%", locale: locale)
+            guard !reached, let projected = window.usedAtThisRate(date, now: now) else {
+                return L10n.t("\(time(date)) · steady use \(steady(at: date))%", locale: locale)
+            }
+            return L10n.t("\(time(date)) · at this rate ~\(Percent.text(for: min(projected, 1)))% (steady use \(steady(at: date))%)",
+                          locale: locale)
         }
         guard let sample = series.reading(at: date) else {
-            return L10n.t("\(time(date)) · not observed", locale: locale)
+            if let first = series.samples.first, date < first.at {
+                return L10n.t("\(time(date)) · before history began", locale: locale)
+            }
+            return L10n.t("\(time(date)) · no data recorded", locale: locale)
         }
-        return L10n.t("\(time(sample.at)) · \(reading(sample.used))% · pace \(pace(at: sample.at))%",
+        return L10n.t("\(time(sample.at)) · used \(reading(sample.used))% (steady use \(steady(at: sample.at))%)",
                       locale: locale)
     }
 }
