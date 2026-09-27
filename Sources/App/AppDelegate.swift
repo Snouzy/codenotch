@@ -494,6 +494,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .sink { [weak store] in store?.recordsUsageHistory = $0 }
                 .store(in: &cancellables)
 
+            preferences.$showCodexDailyLimit
+                .receive(on: RunLoop.main)
+                .sink { [weak store] in store?.showsCodexDailyLimit = $0 }
+                .store(in: &cancellables)
+
             preferences.$deepSeekPricingSchedule
                 .receive(on: RunLoop.main)
                 .sink { [weak fleet] in fleet?.apply(deepSeekPricingSchedule: $0) }

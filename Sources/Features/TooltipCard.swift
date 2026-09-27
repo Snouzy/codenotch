@@ -963,6 +963,91 @@ private struct CodexUsageSection: View {
     }
 }
 
+/// The weekly Codex limit spent on each of the last seven days the endpoint
+/// returned, by model. Vendor figures, so no `~`.
+private struct CodexLimitUsageSection: View {
+    let usage: CodexLimitUsage
+    @Environment(\.codenotchAccentColor) private var accentColor
+    @Environment(\.tooltipSecondaryInk) private var secondaryInk
+
+    /// Leaders in order, then Other.
+    private func color(at index: Int) -> Color {
+        [accentColor, secondaryInk, Palette.ringTrack][min(index, 2)]
+    }
+
+    private func color(for model: String?) -> Color {
+        color(at: model.flatMap { usage.leaders.firstIndex(of: $0) } ?? 2)
+    }
+
+    /// One `Text`, so the line shrinks as a whole: separate ones shrank each on
+    /// its own and left the entries in different sizes.
+    private var legend: Text {
+        usage.legend.enumerated().reduce(Text(verbatim: "")) { line, item in
+            let gap = Text(verbatim: item.offset == 0 ? "" : "   ")
+            let dot = Text(verbatim: "● ").foregroundStyle(color(for: item.element.model))
+            let share = Int((item.element.share * 100).rounded())
+            let label = Text(verbatim: "\(item.element.model ?? L10n.t("Other")) \(share)%")
+            return line + gap + dot + label
+        }
+    }
+
+    var body: some View {
+        let days = usage.days
+        let scale = usage.scale
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Palette.ringTrack)
+                .frame(height: NotchLayout.hairline)
+                .padding(.top, NotchLayout.codexUsageTop)
+
+            Text(L10n.t("Weekly limit by day"))
+                .font(Typography.cardBody)
+                .fontWeight(.semibold)
+                .foregroundStyle(Palette.textPrimary)
+                .padding(.top, NotchLayout.blockSpacing)
+
+            GeometryReader { proxy in
+                HStack(alignment: .bottom, spacing: Design.px(4)) {
+                    ForEach(days, id: \.date) { day in
+                        VStack(spacing: 0) {
+                            ForEach(Array(usage.stack(for: day).enumerated().reversed()), id: \.offset) { index, value in
+                                Rectangle()
+                                    .fill(color(at: index))
+                                    .frame(height: proxy.size.height * CGFloat(value / scale))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: Design.px(3), style: .continuous))
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+            .frame(height: NotchLayout.codexChartHeight)
+            .padding(.top, NotchLayout.codexChartTop)
+
+            HStack(spacing: Design.px(4)) {
+                ForEach(days, id: \.date) { day in
+                    Text(CodexLimitUsage.weekday(day.date))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .font(Typography.cardBody)
+            .foregroundStyle(secondaryInk)
+            .padding(.top, NotchLayout.codexUsageRowGap)
+
+            legend
+                .font(Typography.cardBody)
+                .foregroundStyle(Palette.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            .frame(height: NotchLayout.cardBodyLineHeight)
+            .padding(.top, NotchLayout.codexUsageRowGap)
+        }
+    }
+}
+
 /// The line that says you are stopped.
 ///
 /// Deliberately loud where the rest of the card is quiet: it is the one thing
@@ -1214,6 +1299,7 @@ struct TooltipCard: View {
             compactRowCount: snapshot.compactRowCount,
             projectionRowCount: snapshot.projectionRowCount(now: now, showsUsagePace: showUsagePace),
             hasUsageHistory: snapshot.chartedHistory != nil,
+            hasCodexLimitUsage: snapshot.showsCodexLimitUsage,
             showsDeepSeekPricing: deepSeekPricingEnabled
         )
     }
@@ -1238,6 +1324,9 @@ struct TooltipCard: View {
                         CodexUsageSection(usage: tokenUsage, now: now)
                     } else if let history = snapshot.customUsageHistory {
                         CodexUsageSection(usage: history.codexUsage, now: now)
+                    }
+                    if snapshot.showsCodexLimitUsage, let limitUsage = snapshot.codexLimitUsage {
+                        CodexLimitUsageSection(usage: limitUsage)
                     }
                     if let usageDetail = snapshot.usageDetail, usageDetail.hasUsage {
                         DeepSeekUsageDetail(detail: usageDetail, now: now,

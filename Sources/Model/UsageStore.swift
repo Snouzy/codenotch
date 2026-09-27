@@ -164,7 +164,15 @@ final class UsageStore: ObservableObject {
     private func charted(_ snapshot: ProviderSnapshot) -> ProviderSnapshot {
         var snapshot = snapshot
         snapshot.usageHistory = historySeries[snapshot.id]
+        if !showsCodexDailyLimit { snapshot.codexLimitUsage = nil }
         return snapshot
+    }
+
+    /// Mirrors "Show Codex weekly limit by day". Applied on the way out, like
+    /// the history, so a reading re-shown after a failure cannot bring the
+    /// section back once it is off.
+    var showsCodexDailyLimit = false {
+        didSet { snapshots = snapshots.map(charted) }
     }
     private var lastGood: [String: (snapshot: ProviderSnapshot, fetchedAt: Date)] = [:]
     private var timer: Timer?

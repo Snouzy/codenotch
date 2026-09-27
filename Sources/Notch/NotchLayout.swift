@@ -220,6 +220,14 @@ enum NotchLayout {
             + codexUsageRowGap + cardBodyLineHeight
     }
 
+    /// Separator, title, bars, weekday labels and the legend.
+    static var codexLimitBlockHeight: CGFloat {
+        codexUsageTop + hairline + blockSpacing + cardBodyLineHeight
+            + codexChartTop + codexChartHeight
+            + codexUsageRowGap + cardBodyLineHeight
+            + codexUsageRowGap + cardBodyLineHeight
+    }
+
     /// The percent label's line box. Fixed rather than intrinsic so the panel
     /// geometry can be worked out in AppKit before SwiftUI lays anything out.
     static let percentLineHeight: CGFloat = {
@@ -387,6 +395,7 @@ enum NotchLayout {
                            compactRowCount: Int = 0,
                            projectionRowCount: Int = 0,
                            hasUsageHistory: Bool = false,
+                           hasCodexLimitUsage: Bool = false,
                            showsDeepSeekPricing: Bool = true) -> CGFloat {
         let header = max(glyphSize, cardTitleLineHeight)
             + (hasPlan ? cardBodyLineHeight : 0)
@@ -456,6 +465,10 @@ enum NotchLayout {
                 + 2 * cardBodyLineHeight
                 + codexUsageRowGap
                 + codexChartTop + codexChartHeight
+        }
+
+        if hasCodexLimitUsage {
+            height += codexLimitBlockHeight
         }
 
         if sessionCount > 0 {
@@ -536,7 +549,8 @@ enum NotchLayout {
                                 hasPlan: Bool = false,
                                 hasResetCredits: Bool = false,
                                 projectionRowCount: Int = 0,
-                                hasUsageHistory: Bool = false) -> Int {
+                                hasUsageHistory: Bool = false,
+                                hasCodexLimitUsage: Bool = false) -> Int {
         var fits = 0
         for n in 1...sessionCeiling {
             // Costed as though something were still hidden, so that admitting
@@ -547,7 +561,8 @@ enum NotchLayout {
                                     hasTokenUsage: hasTokenUsage, hasPlan: hasPlan,
                                     hasResetCredits: hasResetCredits,
                                     projectionRowCount: projectionRowCount,
-                                    hasUsageHistory: hasUsageHistory)
+                                    hasUsageHistory: hasUsageHistory,
+                                    hasCodexLimitUsage: hasCodexLimitUsage)
             guard height <= cardBudget else { break }
             fits = n
         }

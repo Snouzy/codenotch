@@ -354,4 +354,16 @@ final class TooltipRenderTests: XCTestCase {
             .environment(\.codenotchHeadlessGlass, true))
         XCTAssertNotNil(renderer.cgImage)
     }
+
+    func testCodexLimitUsageSectionRenders() throws {
+        var snapshot = ProviderSnapshot(
+            id: "codex", displayName: "Codex", glyph: .openai, fidelity: .official, status: .ok,
+            windows: [LimitWindow(id: "primary", label: "5h", usedFraction: 0.3)]
+        )
+        snapshot.codexLimitUsage = try CodexLimitUsage.parse(CodexLimitUsageTests.fixture)
+        let renderer = ImageRenderer(content: TooltipCard(snapshot: snapshot, now: Date(), direction: .trailing)
+            .environment(\.colorScheme, .dark)
+            .environment(\.codenotchHeadlessGlass, true))
+        XCTAssertNotNil(renderer.cgImage)
+    }
 }

@@ -366,6 +366,8 @@ struct ProviderSnapshot: Identifiable, Equatable {
     /// history is on. Attached by the store; providers never set it.
     var usageHistory: UsageHistory.Series? = nil
 
+    var codexLimitUsage: CodexLimitUsage? = nil
+
     /// The number on the cell: the provider's declared primary window — for
     /// Claude, the current session.
     ///

@@ -229,6 +229,10 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(showCodexExtraLimits, forKey: Keys.showCodexExtraLimits) }
     }
 
+    @Published var showCodexDailyLimit: Bool {
+        didSet { defaults.set(showCodexDailyLimit, forKey: Keys.showCodexDailyLimit) }
+    }
+
     /// Whether DeepSeek's current peak/off-peak billing phase is shown in its
     /// usage card. Enabled by default because the card's pricing rows are
     /// useful only when the rule is visible and understood.
@@ -565,6 +569,7 @@ final class Preferences: ObservableObject {
         static let deepSeekPricingSchedule = "deepSeekPricingSchedule"
         static let showCodexExtraLimits = "showCodexExtraLimits"
         static let showUsageHistory = "showUsageHistory"
+        static let showCodexDailyLimit = "showCodexDailyLimit"
     }
 
     /// The budget read straight from disk, off the main actor.
@@ -611,6 +616,11 @@ final class Preferences: ObservableObject {
         defaults: UserDefaults = .standard
     ) -> Bool {
         defaults.object(forKey: Keys.showCodexExtraLimits) as? Bool ?? true
+    }
+
+    /// Read by the Codex provider, an actor, which cannot touch `@Published` state.
+    nonisolated static func storedShowCodexDailyLimit(defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: Keys.showCodexDailyLimit)
     }
 
     /// The MiniMax region read straight from disk, off the main actor.
@@ -851,6 +861,7 @@ final class Preferences: ObservableObject {
         // Off by default for the same reason: it changes what every ring means.
         self.weeklyHeadline = defaults.bool(forKey: Keys.weeklyHeadline)
         self.showCodexExtraLimits = Self.storedShowCodexExtraLimits(defaults: defaults)
+        self.showCodexDailyLimit = Self.storedShowCodexDailyLimit(defaults: defaults)
         self.deepSeekPricingEnabled = defaults.object(forKey: Keys.deepSeekPricingEnabled) as? Bool ?? true
         if let data = defaults.data(forKey: Keys.deepSeekPricingSchedule),
            let schedule = try? JSONDecoder().decode(DeepSeekPricing.Schedule.self, from: data) {
