@@ -1120,6 +1120,10 @@ final class NotchViewModel: ObservableObject {
         snapshots.contains(where: \.hasAvailableResetCredits)
     }
 
+    private var hasUsageHistory: Bool {
+        snapshots.contains { $0.chartedHistory != nil }
+    }
+
     var projectionRows: Int {
         snapshots.map { $0.projectionRowCount(now: now, showsUsagePace: showsUsagePace) }.max() ?? 0
     }
@@ -1131,7 +1135,8 @@ final class NotchViewModel: ObservableObject {
                                            hasTokenUsage: hasTokenUsage,
                                            hasPlan: hasPlan,
                                            hasResetCredits: hasResetCredits,
-                                           projectionRowCount: projectionRows)
+                                           projectionRowCount: projectionRows,
+                                           hasUsageHistory: hasUsageHistory)
     }
 
     private func contentCardHeight(sessionCap: Int) -> CGFloat {
@@ -1152,6 +1157,7 @@ final class NotchViewModel: ObservableObject {
                 localLedgerRows: snapshot.localLedgerRowCount,
                 compactRowCount: snapshot.compactRowCount,
                 projectionRowCount: snapshot.projectionRowCount(now: now, showsUsagePace: showsUsagePace),
+                hasUsageHistory: snapshot.chartedHistory != nil,
                 showsDeepSeekPricing: deepSeekPricingEnabled)
         }.max() ?? 0
     }

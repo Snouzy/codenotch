@@ -211,6 +211,15 @@ enum NotchLayout {
         blockSpacing + 3 * cardBodyLineHeight + 2 * codexUsageRowGap
     }
 
+    // Weekly usage history
+    static let historyChartTop = Design.px(15)
+    static let historyChartHeight = Design.px(115)
+    /// Separator, chart, and the line naming the cycle's two ends.
+    static var historyBlockHeight: CGFloat {
+        codexUsageTop + hairline + historyChartTop + historyChartHeight
+            + codexUsageRowGap + cardBodyLineHeight
+    }
+
     /// The percent label's line box. Fixed rather than intrinsic so the panel
     /// geometry can be worked out in AppKit before SwiftUI lays anything out.
     static let percentLineHeight: CGFloat = {
@@ -377,6 +386,7 @@ enum NotchLayout {
                            localLedgerRows: Int = 0,
                            compactRowCount: Int = 0,
                            projectionRowCount: Int = 0,
+                           hasUsageHistory: Bool = false,
                            showsDeepSeekPricing: Bool = true) -> CGFloat {
         let header = max(glyphSize, cardTitleLineHeight)
             + (hasPlan ? cardBodyLineHeight : 0)
@@ -426,6 +436,10 @@ enum NotchLayout {
         } else {
             // The status message, at whatever height it actually wraps to.
             height += headerToBlock + bodyTextHeight(statusMessage ?? "")
+        }
+
+        if hasUsageHistory {
+            height += historyBlockHeight
         }
 
         if hasResetCredits {
@@ -521,7 +535,8 @@ enum NotchLayout {
                                 hasTokenUsage: Bool = false,
                                 hasPlan: Bool = false,
                                 hasResetCredits: Bool = false,
-                                projectionRowCount: Int = 0) -> Int {
+                                projectionRowCount: Int = 0,
+                                hasUsageHistory: Bool = false) -> Int {
         var fits = 0
         for n in 1...sessionCeiling {
             // Costed as though something were still hidden, so that admitting
@@ -531,7 +546,8 @@ enum NotchLayout {
                                     sessionCount: n + 1, sessionCap: n,
                                     hasTokenUsage: hasTokenUsage, hasPlan: hasPlan,
                                     hasResetCredits: hasResetCredits,
-                                    projectionRowCount: projectionRowCount)
+                                    projectionRowCount: projectionRowCount,
+                                    hasUsageHistory: hasUsageHistory)
             guard height <= cardBudget else { break }
             fits = n
         }
