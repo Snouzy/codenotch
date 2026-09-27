@@ -969,6 +969,7 @@ private struct CodexLimitUsageSection: View {
     let usage: CodexLimitUsage
     @Environment(\.codenotchAccentColor) private var accentColor
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
+    @State private var hovered: Int?
 
     /// Leaders in order, then Other.
     private func color(at index: Int) -> Color {
@@ -977,6 +978,15 @@ private struct CodexLimitUsageSection: View {
 
     private func color(for model: String?) -> Color {
         color(at: model.flatMap { usage.leaders.firstIndex(of: $0) } ?? 2)
+    }
+
+    /// `CodexLimitUsage.Detail.line`, with each dot in its bar's colour.
+    private var detail: Text {
+        let detail = usage.detail(hovering: hovered)
+        guard !detail.parts.isEmpty else { return Text(verbatim: detail.text) }
+        return detail.parts.reduce(Text(verbatim: detail.text + " ·")) { line, part in
+            line + Text(verbatim: " ● ").foregroundStyle(color(at: part.series)) + Text(verbatim: part.amount)
+        }
     }
 
     /// One `Text`, so the line shrinks as a whole: separate ones shrank each on
@@ -1008,7 +1018,7 @@ private struct CodexLimitUsageSection: View {
 
             GeometryReader { proxy in
                 HStack(alignment: .bottom, spacing: Design.px(4)) {
-                    ForEach(days, id: \.date) { day in
+                    ForEach(Array(days.enumerated()), id: \.element.date) { index, day in
                         VStack(spacing: 0) {
                             ForEach(Array(usage.stack(for: day).enumerated().reversed()), id: \.offset) { index, value in
                                 Rectangle()
@@ -1018,9 +1028,20 @@ private struct CodexLimitUsageSection: View {
                         }
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: Design.px(3), style: .continuous))
+                        .opacity(hovered == nil || hovered == index ? 1 : 0.35)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location) where !days.isEmpty:
+                        let slot = location.x / max(proxy.size.width, 1) * CGFloat(days.count)
+                        hovered = min(days.count - 1, max(0, Int(slot)))
+                    default:
+                        hovered = nil
+                    }
+                }
             }
             .frame(height: NotchLayout.codexChartHeight)
             .padding(.top, NotchLayout.codexChartTop)
@@ -1042,8 +1063,16 @@ private struct CodexLimitUsageSection: View {
                 .foregroundStyle(Palette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            .frame(height: NotchLayout.cardBodyLineHeight)
-            .padding(.top, NotchLayout.codexUsageRowGap)
+                .frame(height: NotchLayout.cardBodyLineHeight)
+                .padding(.top, NotchLayout.codexUsageRowGap)
+
+            detail
+                .font(Typography.cardBody)
+                .foregroundStyle(secondaryInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(height: NotchLayout.cardBodyLineHeight)
+                .padding(.top, NotchLayout.codexUsageRowGap)
         }
     }
 }
@@ -1182,8 +1211,11 @@ private struct UsageHistorySection: View {
     let series: UsageHistory.Series
     let window: LimitWindow
     let now: Date
+    let fidelity: Fidelity
+    let staleSince: Date?
     @Environment(\.codenotchAccentColor) private var accentColor
     @Environment(\.tooltipSecondaryInk) private var secondaryInk
+    @State private var hovered: Date?
 
     private var end: Date { window.resetsAt ?? now }
     private var duration: TimeInterval { max(1, window.duration ?? 1) }
@@ -1240,12 +1272,45 @@ private struct UsageHistorySection: View {
                         }
                         .stroke(secondaryInk, style: StrokeStyle(lineWidth: Design.px(3), dash: [Design.px(4), Design.px(6)]))
                     }
+
+                    if let hovered {
+                        Path { path in
+                            path.move(to: point(hovered, 0, in: size))
+                            path.addLine(to: point(hovered, 1, in: size))
+                        }
+                        .stroke(secondaryInk, lineWidth: Design.px(1.5))
+                        if let reading = series.reading(at: hovered) {
+                            Circle()
+                                .fill(accentColor)
+                                .frame(width: Design.px(10), height: Design.px(10))
+                                .position(point(reading.at, reading.used, in: size))
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location):
+                        let fraction = min(max(location.x / max(size.width, 1), 0), 1)
+                        hovered = start.addingTimeInterval(duration * Double(fraction))
+                    case .ended:
+                        hovered = nil
+                    }
                 }
             }
             .frame(height: NotchLayout.historyChartHeight)
             .padding(.top, NotchLayout.historyChartTop)
 
             SplitRow(leading: label(start), trailing: label(end))
+                .padding(.top, NotchLayout.codexUsageRowGap)
+
+            Text(verbatim: UsageHistory.detail(series: series, window: window, hovering: hovered, now: now,
+                                               fidelity: fidelity, staleSince: staleSince))
+                .font(Typography.cardBody)
+                .foregroundStyle(secondaryInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(height: NotchLayout.cardBodyLineHeight)
                 .padding(.top, NotchLayout.codexUsageRowGap)
         }
     }
@@ -1315,7 +1380,9 @@ struct TooltipCard: View {
                     ProviderTooltip(activityNote: localActivityNote, snapshot: snapshot, now: now, resetTimeFormat: resetTimeFormat,
                                     showUsagePace: showUsagePace)
                     if let charted = snapshot.chartedHistory {
-                        UsageHistorySection(series: charted.series, window: charted.window, now: now)
+                        UsageHistorySection(series: charted.series, window: charted.window, now: now,
+                                            fidelity: snapshot.fidelity,
+                                            staleSince: snapshot.status.staleSince.flatMap { $0 == .distantPast ? nil : $0 })
                     }
                     if let resetCredits = snapshot.availableResetCredits(at: now) {
                         UsageResetCreditsSection(credits: resetCredits, now: now)

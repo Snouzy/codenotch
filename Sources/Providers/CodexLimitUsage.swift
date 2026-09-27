@@ -89,7 +89,51 @@ struct CodexLimitUsage: Codable, Equatable, Sendable {
     /// The tallest day, floored so a quiet week does not draw full-height bars.
     var scale: Double { max(1, days.map(\.total).max() ?? 0) }
 
+    /// The line under the legend. Its parts follow the bars' own series, the
+    /// week's two leaders then Other, so each amount wears its bar's colour
+    /// instead of a model name the card has no room for.
+    struct Detail: Equatable {
+        struct Part: Equatable {
+            /// 0 and 1 are the leaders, 2 is Other.
+            let series: Int
+            let amount: String
+        }
+
+        let text: String
+        let parts: [Part]
+
+        /// The line as the card lays it out, dots in place of colours.
+        var line: String { parts.isEmpty ? text : text + " ·" + parts.map { " ● \($0.amount)" }.joined() }
+    }
+
+    /// The days' total and the last day without a pointer, the hovered day
+    /// split by series with one.
+    func detail(hovering index: Int?, locale: Locale = L10n.locale) -> Detail {
+        func amount(_ value: Double) -> String {
+            String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
+        }
+        guard let index, days.indices.contains(index) else {
+            guard let last = days.last else { return Detail(text: "", parts: []) }
+            let total = amount(days.reduce(0) { $0 + $1.total })
+            let lastDay = Self.weekday(last.date, locale: locale)
+            return Detail(text: L10n.t("\(days.count) days \(total)% · \(lastDay) \(amount(last.total))%", locale: locale),
+                          parts: [])
+        }
+        let day = days[index]
+        let label = Self.day(day.date, locale: locale)
+        guard day.total > 0 else { return Detail(text: L10n.t("\(label) · no usage", locale: locale), parts: []) }
+        let parts = stack(for: day).enumerated().compactMap { series, value in
+            value > 0 ? Detail.Part(series: leaders.count < 2 && series == leaders.count ? 2 : series,
+                                    amount: amount(value)) : nil
+        }
+        return Detail(text: L10n.t("\(label) · \(amount(day.total))% of weekly", locale: locale), parts: parts)
+    }
+
     static func weekday(_ date: String, locale: Locale = L10n.locale) -> String {
+        format(date, template: "E", locale: locale)
+    }
+
+    private static func format(_ date: String, template: String, locale: Locale) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let parser = DateFormatter()
@@ -102,8 +146,13 @@ struct CodexLimitUsage: Codable, Equatable, Sendable {
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.locale = locale
-        formatter.setLocalizedDateFormatFromTemplate("E")
+        formatter.setLocalizedDateFormatFromTemplate(template)
         return formatter.string(from: day)
+    }
+
+    /// Weekday and day of the month, read in UTC like `weekday`.
+    static func day(_ date: String, locale: Locale = L10n.locale) -> String {
+        format(date, template: "E d", locale: locale)
     }
 }
 

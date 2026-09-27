@@ -287,3 +287,45 @@ final class CodexDailyLimitSwitchTests: XCTestCase {
         XCTAssertNil(store.snapshots.first?.codexLimitUsage, "a failed fetch re-showed the section")
     }
 }
+
+final class CodexLimitUsageDetailTests: XCTestCase {
+    private let en = Locale(identifier: "en_US")
+    private typealias Part = CodexLimitUsage.Detail.Part
+
+    func testWithoutHoverItSumsTheDaysAndNamesTheLastOne() throws {
+        let usage = try CodexLimitUsage.parse(CodexLimitUsageTests.fixture)
+        XCTAssertEqual(usage.detail(hovering: nil, locale: en), .init(text: "2 days 3.3% · Sat 2.0%", parts: []))
+    }
+
+    func testAHoveredDayIsSplitInTheChartsOwnSeries() throws {
+        let usage = try CodexLimitUsage.parse(CodexLimitUsageTests.fixture)
+        XCTAssertEqual(usage.detail(hovering: 1, locale: en),
+                       .init(text: "Sat 26 · 2.0% of weekly",
+                             parts: [Part(series: 0, amount: "1.3"), Part(series: 1, amount: "0.7")]))
+    }
+
+    func testOtherTakesTheRestAndAnEmptyDaySaysSo() throws {
+        let usage = try CodexLimitUsage.parse(Data("""
+        {"units":"percent","data":[
+          {"date":"2026-09-01","models":[]},
+          {"date":"2026-09-02","models":[{"model":"a","credits":2.0},{"model":"b","credits":1.0},{"model":"c","credits":0.5}]}]}
+        """.utf8))
+        XCTAssertEqual(usage.detail(hovering: 0, locale: en), .init(text: "Tue 1 · no usage", parts: []))
+        XCTAssertEqual(usage.detail(hovering: 1, locale: en),
+                       .init(text: "Wed 2 · 3.5% of weekly",
+                             parts: [Part(series: 0, amount: "2.0"), Part(series: 1, amount: "1.0"),
+                                     Part(series: 2, amount: "0.5")]))
+        XCTAssertEqual(usage.detail(hovering: 7, locale: en), usage.detail(hovering: nil, locale: en))
+    }
+
+    func testTheLongestHoverLineFitsTheCard() throws {
+        let usage = try CodexLimitUsage.parse(Data("""
+        {"units":"percent","data":[{"date":"2026-09-30","models":[
+          {"model":"gpt-5.1-codex-max","credits":10.3},{"model":"gpt-6-astra","credits":1.7},
+          {"model":"gpt-image-2","credits":0.5}]}]}
+        """.utf8))
+        let line = usage.detail(hovering: 0, locale: en).line
+        let width = (line as NSString).size(withAttributes: [.font: NotchLayout.cardBodyFont]).width
+        XCTAssertLessThanOrEqual(width, NotchLayout.cardTextWidth / 0.8, line)
+    }
+}

@@ -276,3 +276,83 @@ final class UsageHistoryLayoutTests: XCTestCase {
         )
     }
 }
+
+final class UsageHistoryDetailTests: XCTestCase {
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+    private let week: TimeInterval = 604800
+    private let en = Locale(identifier: "en_GB")
+
+    private var utc: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }
+
+    private var window: LimitWindow {
+        LimitWindow(id: "weekly_all", label: "Weekly", usedFraction: 0.78,
+                    resetsAt: start.addingTimeInterval(week), duration: week)
+    }
+
+    private var series: UsageHistory.Series {
+        UsageHistory.Series(windowID: "weekly_all", cycleStart: start, samples: [
+            .init(at: start.addingTimeInterval(3600), used: 0.10),
+            .init(at: start.addingTimeInterval(5400), used: 0.12),
+            .init(at: start.addingTimeInterval(3 * 86400), used: 0.40),
+            .init(at: start.addingTimeInterval(3 * 86400 + 1800), used: 0.42),
+        ])
+    }
+
+    private var now: Date { start.addingTimeInterval(3 * 86400 + 1800) }
+
+    private func detail(hovering date: Date?, window: LimitWindow? = nil,
+                        fidelity: Fidelity = .official, staleSince: Date? = nil) -> String {
+        UsageHistory.detail(series: series, window: window ?? self.window, hovering: date, now: now,
+                            fidelity: fidelity, staleSince: staleSince, calendar: utc, locale: en)
+    }
+
+    func testWithoutHoverItGivesTheLatestReadingAndThePace() {
+        XCTAssertEqual(detail(hovering: nil), "Now 78% · pace 43%")
+    }
+
+    func testHoverGivesTheNearestSampleAtItsOwnTime() {
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(5300)), "Fri 09:30 · 12% · pace 1%")
+    }
+
+    func testHoverOverAGapSaysItWasNotObserved() {
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(1.5 * 86400)), "Sat 20:00 · not observed")
+    }
+
+    func testHoverBeforeTheFirstReadingIsNotObservedEither() {
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(60)), "Fri 08:01 · not observed")
+    }
+
+    func testADerivedReadingKeepsItsTilde() {
+        XCTAssertEqual(detail(hovering: nil, fidelity: .derived), "Now ~78% · pace 43%")
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(5300), fidelity: .derived),
+                       "Fri 09:30 · ~12% · pace 1%")
+    }
+
+    func testReadingsArePrintedLikeTheRestOfTheCard() {
+        func current(_ used: Double) -> String {
+            detail(hovering: nil, window: LimitWindow(id: "weekly_all", label: "Weekly", usedFraction: used,
+                                                      resetsAt: start.addingTimeInterval(week), duration: week))
+        }
+        XCTAssertEqual(current(1.3), "Now 130% · pace 43%")
+        XCTAssertEqual(current(0.003), "Now 0.3% · pace 43%")
+    }
+
+    func testAnOldReadingIsDatedNotCalledNow() {
+        XCTAssertEqual(detail(hovering: nil, staleSince: now.addingTimeInterval(-7200)), "06:30 · 78% · pace 42%")
+    }
+
+    func testHoveringTheFutureGivesOnlyThePace() {
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(5 * 86400)), "Wed 08:00 · pace 71%")
+    }
+
+    func testAMonthlyWindowNamesADateWeeksAway() {
+        let monthly = LimitWindow(id: "weekly_all", label: "Monthly", usedFraction: 0.2,
+                                  resetsAt: start.addingTimeInterval(30 * 86400), duration: 30 * 86400)
+        XCTAssertEqual(detail(hovering: start.addingTimeInterval(25 * 86400), window: monthly),
+                       "9 Feb at 08:00 · pace 83%")
+    }
+}

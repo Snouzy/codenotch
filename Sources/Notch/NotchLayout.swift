@@ -214,18 +214,17 @@ enum NotchLayout {
     // Weekly usage history
     static let historyChartTop = Design.px(15)
     static let historyChartHeight = Design.px(115)
-    /// Separator, chart, and the line naming the cycle's two ends.
+    /// Separator, chart, the line naming the cycle's two ends, and the detail line.
     static var historyBlockHeight: CGFloat {
         codexUsageTop + hairline + historyChartTop + historyChartHeight
-            + codexUsageRowGap + cardBodyLineHeight
+            + 2 * (codexUsageRowGap + cardBodyLineHeight)
     }
 
-    /// Separator, title, bars, weekday labels and the legend.
+    /// Separator, title, bars, weekday labels, the legend and the detail line.
     static var codexLimitBlockHeight: CGFloat {
         codexUsageTop + hairline + blockSpacing + cardBodyLineHeight
             + codexChartTop + codexChartHeight
-            + codexUsageRowGap + cardBodyLineHeight
-            + codexUsageRowGap + cardBodyLineHeight
+            + 3 * (codexUsageRowGap + cardBodyLineHeight)
     }
 
     /// The percent label's line box. Fixed rather than intrinsic so the panel

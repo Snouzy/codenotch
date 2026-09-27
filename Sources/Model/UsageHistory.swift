@@ -112,3 +112,60 @@ extension ProviderSnapshot {
         return (usageHistory, window)
     }
 }
+
+extension UsageHistory.Series {
+    /// The sample under `date` while the app was watching; nil across a gap,
+    /// or further than half a gap from either end of the recorded span.
+    func reading(at date: Date) -> UsageHistory.Sample? {
+        guard let first = samples.first, let last = samples.last else { return nil }
+        let reach = UsageHistory.gapThreshold / 2
+        if date < first.at { return first.at.timeIntervalSince(date) <= reach ? first : nil }
+        if date > last.at { return date.timeIntervalSince(last.at) <= reach ? last : nil }
+        guard let segment = segments.first(where: { $0.from.at <= date && date <= $0.to.at }),
+              segment.observed else { return nil }
+        return date.timeIntervalSince(segment.from.at) <= segment.to.at.timeIntervalSince(date)
+            ? segment.from : segment.to
+    }
+}
+
+extension UsageHistory {
+    /// The line under the chart: the latest reading and the pace without a
+    /// pointer, the reading under it with one. Readings print like the rest of
+    /// the card, `~` included; pace is time arithmetic and never carries one.
+    static func detail(series: Series, window: LimitWindow, hovering date: Date?, now: Date,
+                       fidelity: Fidelity = .official, staleSince: Date? = nil,
+                       calendar: Calendar = .current, locale: Locale = L10n.locale) -> String {
+        let duration = max(1, window.duration ?? 1)
+        let start = (window.resetsAt ?? now).addingTimeInterval(-duration)
+        func pace(at moment: Date) -> Int {
+            Int((min(max(moment.timeIntervalSince(start) / duration, 0), 1) * 100).rounded())
+        }
+        func reading(_ fraction: Double) -> String { "\(fidelity.qualifier)\(Percent.text(for: fraction))" }
+        func time(_ moment: Date) -> String {
+            let formatter = ResetCopy.formatter(for: calendar)
+            formatter.locale = locale
+            // Past or future, a weekday alone only names a day within a week.
+            let days = abs(ResetCopy.daysApart(from: moment, to: now, calendar: calendar))
+            formatter.setLocalizedDateFormatFromTemplate(days == 0 ? "j:mm" : days < 7 ? "E j:mm" : "MMM d j:mm")
+            return formatter.string(from: moment)
+        }
+
+        guard let date else {
+            guard let latest = window.usedFraction ?? series.samples.last?.used else { return "" }
+            // A remembered reading is dated, as the card's header dates it.
+            if let staleSince {
+                return L10n.t("\(time(staleSince)) · \(reading(latest))% · pace \(pace(at: staleSince))%",
+                              locale: locale)
+            }
+            return L10n.t("Now \(reading(latest))% · pace \(pace(at: now))%", locale: locale)
+        }
+        if date > now {
+            return L10n.t("\(time(date)) · pace \(pace(at: date))%", locale: locale)
+        }
+        guard let sample = series.reading(at: date) else {
+            return L10n.t("\(time(date)) · not observed", locale: locale)
+        }
+        return L10n.t("\(time(sample.at)) · \(reading(sample.used))% · pace \(pace(at: sample.at))%",
+                      locale: locale)
+    }
+}
